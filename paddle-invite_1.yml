@@ -1,0 +1,43 @@
+name: Sunday paddle invite
+
+on:
+  schedule:
+    # GitHub cron is UTC only, so each send day fires twice and send_invite.py
+    # drops whichever firing isn't 9am in Michigan. 13:17 UTC is 9:17am EDT
+    # (summer); 14:17 UTC is 9:17am EST (after the clocks go back Nov 1).
+    - cron: "17 13 * * 1,3,5"   # 9:17am ET while daylight saving is in effect
+    - cron: "17 14 * * 1,3,5"   # 9:17am ET once it ends
+    # Mon -> invite to the original group
+    # Wed -> invite to everyone on the list
+    # Fri -> roster of who's playing
+  workflow_dispatch:        # "Run workflow" button for testing on demand
+    inputs:
+      mode:
+        description: "Which send to run"
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - monday
+          - wednesday
+          - friday
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install firebase-admin requests
+      - name: Send the invite / roster
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MODE: ${{ github.event.inputs.mode || 'auto' }}
+          # Lets the script tell a scheduled run from a manual one: the 9am
+          # guard applies to the schedule, never to the "Run workflow" button.
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: python send_invite.py
