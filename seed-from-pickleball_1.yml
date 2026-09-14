@@ -1,0 +1,44 @@
+name: Import the pickleball roster (one time)
+
+# Manual only - this never runs on a schedule.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Actually write? Leave false first to preview the list."
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      tier:
+        description: "Bring everyone in as..."
+        default: "extended"
+        type: choice
+        options:
+          - extended   # safe: nobody gets Monday's email until you mark them
+          - core       # everyone is a Monday regular from the start
+      replace:
+        description: "Wipe the paddle roster first? Only for starting over."
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install firebase-admin
+      - name: Copy the roster across
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          APPLY: ${{ github.event.inputs.apply }}
+          TIER: ${{ github.event.inputs.tier }}
+          REPLACE: ${{ github.event.inputs.replace }}
+        run: python seed_from_pickleball.py
