@@ -117,6 +117,14 @@ except Exception as err:
     # The email is the thing that matters; a failed meta write must not stop it.
     print("[%s] Could not publish start time to Firebase - %s" % (mode, type(err).__name__))
 
+# --- Email is switched off (Oct 2026) ---
+# Kevin sends the invite himself now, so this run only keeps the start time on
+# the tracker page current. Set SEND_EMAIL to True to bring the emails back.
+SEND_EMAIL = False
+if not SEND_EMAIL:
+    print("[%s] Email is off - start time published, nothing sent." % mode)
+    raise SystemExit(0)
+
 # A line of copy that's honest about how sure we are.
 if confident:
     time_line = "Start time is %s (%s)." % (start_time, start_reason)
