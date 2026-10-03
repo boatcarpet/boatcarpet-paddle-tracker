@@ -114,12 +114,8 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
 </div>
 
 <div class="policy">
-  <strong>How this works:</strong>
-  <ol class="policy-list">
-    <li><strong>Wednesday</strong> &mdash; click if you are playing this week.</li>
-    <li><strong>Friday</strong> &mdash; a final email listing who's playing.</li>
-  </ol>
-  <div class="policy-note"><strong>The start time moves with the Lions.</strong> If they play at 1:00 we start at 4:30. If they play at 4:00&ndash;4:30 we start at 3:00. Otherwise 4:00. The time up top is checked against the NFL schedule before each email goes out.</div>
+  <strong>How this works:</strong> find your name and tap <strong>IN</strong>, <strong>?</strong> or <strong>OUT</strong> for this Sunday. You can change it any time.
+  <div class="policy-note"><strong>The start time moves with the Lions.</strong> If they play at 1:00 we start at 4:30. If they play at 4:00&ndash;4:30 we start at 3:00. Otherwise 4:00.</div>
 </div>
 
 <div class="card join" style="display:none">
@@ -175,14 +171,12 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
 
 <div class="bulkbar" id="bulkbar">
   <span class="count" id="bulk-count">0 selected</span>
-  <button onclick="bulkTier('core')">Make regulars</button>
-  <button onclick="bulkTier('extended')">Make guests</button>
   <button class="danger" onclick="bulkRemove()">Remove</button>
   <button onclick="clearSelection()">Cancel</button>
 </div>
 
 <div class="player-list" id="player-list"></div>
-<div class="empty" id="empty-state" style="display:none">No one on the list yet. Add the first name above.</div>
+<div class="empty" id="empty-state" style="display:none">No one on the list yet.</div>
 
 <div class="card" style="display:none">
   <div class="section-title">This week's invite text</div>
@@ -198,7 +192,7 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
   <button class="btn" onclick="clearPlayers()">Clear all names</button>
 </div>
 
-<footer>Replies reset automatically every Monday morning. Names and emails stay.</footer>
+<footer>Replies reset automatically every Monday morning. Names stay.</footer>
 
 </div>
 
@@ -326,25 +320,6 @@ function playerRow(key, p) {
   nameSpan.textContent = p.name;
   nd.appendChild(nameSpan);
 
-  if (!p.hasEmail) {
-    var badge = document.createElement("span");
-    badge.className = "badge";
-    badge.textContent = "no auto-email";
-    nd.appendChild(badge);
-  }
-
-  var tier = document.createElement("button");
-  tier.className = "edit-link";
-  tier.textContent = tierOf(p) === "core" ? "regular – make guest" : "guest – make regular";
-  tier.title = "Regulars get the Monday email as well";
-  tier.onclick = function () { toggleTier(key, tierOf(p)); };
-  nd.appendChild(tier);
-
-  var edit = document.createElement("button");
-  edit.className = "edit-link";
-  edit.textContent = p.hasEmail ? "edit email" : "add email";
-  edit.onclick = function () { editContact(key, p.name); };
-  nd.appendChild(edit);
 
   var bd = document.createElement("div");
   bd.className = "status-btns";
@@ -376,21 +351,7 @@ function render() {
 
   document.getElementById("empty-state").style.display = sorted.length ? "none" : "block";
 
-  var core = filtered.filter(function (e) { return tierOf(e[1]) === "core"; });
-  var ext  = filtered.filter(function (e) { return tierOf(e[1]) !== "core"; });
-
-  function section(title, entries) {
-    if (!entries.length) return;
-    if (core.length && ext.length) {
-      var h = document.createElement("div");
-      h.className = "group-head";
-      h.textContent = title;
-      list.appendChild(h);
-    }
-    entries.forEach(function (e) { list.appendChild(playerRow(e[0], e[1])); });
-  }
-  section("The regulars", core);
-  section("Also on the list", ext);
+  filtered.forEach(function (e) { list.appendChild(playerRow(e[0], e[1])); });
 
   counts();
   updateBulkBar();
@@ -545,7 +506,7 @@ function doReset() {
   metaRef.child("weekKey").set(weekKey());
 }
 function clearPlayers() {
-  if (!confirm("Remove everyone from the list? This also clears their saved emails.")) return;
+  if (!confirm("Remove everyone from the list?")) return;
   Object.keys(players).forEach(function (k) {
     playersRef.child(k).remove();
     contactsRef.child(k).remove();
