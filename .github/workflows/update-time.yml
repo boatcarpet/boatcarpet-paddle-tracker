@@ -1,0 +1,27 @@
+name: Update Sunday start time
+
+# Checks the Lions schedule every Monday morning and writes the paddle
+# start time to the tracker page. Sends no email.
+
+on:
+  schedule:
+    # GitHub cron is UTC only, so this fires twice each Monday and
+    # update_time.py drops whichever firing isn't 9am in Michigan.
+    - cron: "17 13 * * 1"
+    - cron: "17 14 * * 1"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install firebase-admin requests
+      - name: Check the Lions schedule and update the start time
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: python update_time.py
