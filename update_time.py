@@ -17,16 +17,16 @@ from lions_time import paddle_start, next_sunday
 DATABASE_URL = "https://wednesday-tennis-tracker-default-rtdb.firebaseio.com"
 TRACKER_URL = "https://boatcarpet.github.io/boatcarpet-paddle-tracker/"
 
-# GitHub cron is UTC only, so this fires twice each Monday - 13:17 UTC is
-# 9:17am EDT, 14:17 UTC is 9:17am EST. Exactly one is 9am local; drop the other.
-# The guard applies to scheduled runs only, never the "Run workflow" button.
+# Runs every few hours, so a dropped scheduled run heals itself and a late
+# Lions flex change gets picked up mid-week. Writing the same value again is
+# harmless, so there is no hour to hit and nothing to miss.
 ET = ZoneInfo("America/New_York")
 now_et = datetime.datetime.now(ET)
-RUN_HOUR = 9
 
-if os.environ.get("GITHUB_EVENT_NAME", "") == "schedule" and now_et.hour != RUN_HOUR:
-      print("Scheduled run at %s local - not the %d o'clock hour in Michigan, so this is the daylight-saving twin. Nothing to do." % (now_et.strftime("%-I:%M %p %Z"), RUN_HOUR))
-      raise SystemExit(0)
+
+
+      
+      
 
 print("Running at %s" % now_et.strftime("%a %-I:%M %p %Z"))
 
