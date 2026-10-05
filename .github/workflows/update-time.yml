@@ -1,14 +1,14 @@
 name: Update Sunday start time
 
-# Checks the Lions schedule every Monday morning and writes the paddle
+# Checks the Lions schedule through the week and writes the paddle
 # start time to the tracker page. Sends no email.
 
 on:
   schedule:
-    # GitHub cron is UTC only, so this fires twice each Monday and
-    # update_time.py drops whichever firing isn't 9am in Michigan.
-    - cron: "17 13 * * 1"
-    - cron: "17 14 * * 1"
+    # Every 6 hours, every day. Running often is deliberate: a dropped
+    # scheduled run heals itself, and a late Lions flex change gets caught.
+    - cron: "17 */6 * * *"
+    
   workflow_dispatch:
 
 jobs:
