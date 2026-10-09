@@ -159,6 +159,15 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
   </div>
 </div>
 
+<div class="card join" id="organizer-add" style="display:none">
+  <div class="section-title">Organizer: add a player</div>
+  <div class="add-player-row">
+    <input type="text" id="org-name" placeholder="Player's name...">
+    <button class="btn btn-primary" onclick="organizerAdd()">Add</button>
+  </div>
+  <div class="hint" id="org-msg">Only shows on the organizer link. New names start as No reply.</div>
+</div>
+
 <div class="filter-tabs">
   <button class="filter-tab active" onclick="setFilter('all',this)">ALL</button>
   <button class="filter-tab" onclick="setFilter('waiting',this)">NO REPLY</button>
@@ -523,6 +532,26 @@ function copyLink() {
   if (navigator.clipboard) { navigator.clipboard.writeText(u).then(function () { alert("Link copied."); }); }
   else { alert(u); }
 }
+
+// ---- Organizer mode ----
+// The public page has no way to add names. Opening the page with ?admin on
+// the end of the address (Kevin's bookmarked link) shows a simple add box.
+var IS_ORGANIZER = /[?&]admin(=|&|$)/.test(location.search);
+if (IS_ORGANIZER) document.getElementById("organizer-add").style.display = "block";
+function organizerAdd() {
+  var el = document.getElementById("org-name"), msg = document.getElementById("org-msg");
+  var name = el.value.trim().replace(/\s+/g, " ");
+  if (!name) { el.focus(); return; }
+  var dup = Object.values(players).some(function (p) {
+    return (p.name || "").toLowerCase() === name.toLowerCase();
+  });
+  if (dup) { msg.textContent = name + " is already on the list."; el.select(); return; }
+  addPerson(name, "", "extended");
+  el.value = "";
+  el.focus();
+  msg.textContent = "Added " + name + ".";
+}
+document.getElementById("org-name").addEventListener("keydown", function (e) { if (e.key === "Enter") organizerAdd(); });
 
 document.getElementById("new-player").addEventListener("keydown", function (e) { if (e.key === "Enter") startSignup(); });
 
