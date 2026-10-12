@@ -2,14 +2,15 @@ name: Sunday paddle invite
 
 on:
   schedule:
-    # GitHub cron is UTC only, so each send day fires twice and send_invite.py
-    # drops whichever firing isn't 9am in Michigan. 13:17 UTC is 9:17am EDT
-    # (summer); 14:17 UTC is 9:17am EST (after the clocks go back Nov 1).
-    - cron: "17 13 * * 1,3,5"   # 9:17am ET while daylight saving is in effect
-    - cron: "17 14 * * 1,3,5"   # 9:17am ET once it ends
-    # Mon -> invite to the original group
-    # Wed -> invite to everyone on the list
-    # Fri -> roster of who's playing
+    # GitHub cron is UTC only, so each send fires twice, an hour apart, and
+    # send_invite.py sends on the first one at/after the local send time and
+    # skips the other. Clocks go back Nov 1, which is why there are two.
+    # Mon -> invite to everyone on the list, ~9:15am ET
+    - cron: "17 13 * * 1"   # 9:17am EDT / 8:17am EST
+    - cron: "17 14 * * 1"   # 10:17am EDT / 9:17am EST
+    # Fri -> roster of who's playing, ~1:15pm ET
+    - cron: "17 17 * * 5"   # 1:17pm EDT / 12:17pm EST
+    - cron: "17 18 * * 5"   # 2:17pm EDT / 1:17pm EST
   workflow_dispatch:        # "Run workflow" button for testing on demand
     inputs:
       mode:
@@ -19,7 +20,6 @@ on:
         options:
           - auto
           - monday
-          - wednesday
           - friday
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           MODE: ${{ github.event.inputs.mode || 'auto' }}
-          # Lets the script tell a scheduled run from a manual one: the 9am
-          # guard applies to the schedule, never to the "Run workflow" button.
+          # Lets the script tell a scheduled run from a manual one: the time
+          # guards apply to the schedule, never to the "Run workflow" button.
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: python send_invite.py
