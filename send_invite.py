@@ -1,17 +1,19 @@
 """
 Sunday Paddle Tennis emails.
 
-Three sends, decided automatically by the day it runs:
-  - MONDAY    -> sign-up email to the original group only (tier "core")
-  - WEDNESDAY -> same invite, to everyone on the list (core + extended)
-  - FRIDAY    -> the roster: who's playing, to everyone on the list
+Two sends, decided automatically by the day it runs, both to everyone on
+the list who has an email:
+  - MONDAY 9am   -> this week's invite: find your name, tap IN / MAYBE / OUT
+  - FRIDAY 1pm   -> the roster: who's playing Sunday
+
+Nothing goes out before FIRST_SEND (the first Monday of the email era).
 
 Before every send, the Detroit Lions schedule is checked and the paddle start
 time is computed from it (see lions_time.py). The computed time is written to
 Firebase at paddle/meta so the tracker page shows exactly what the email says.
 
 MODE can be forced from the workflow's "Run workflow" button
-(auto / monday / wednesday / friday) for testing on demand.
+(auto / monday / friday). A manual run SENDS TO THE WHOLE LIST.
 """
 import os
 import re
@@ -60,27 +62,34 @@ def tier_of(person):
 
 
 # --- What time is it in Michigan? ---
-# GitHub's cron only speaks UTC, so the workflow fires TWICE on each send day:
-# 13:17 UTC (9:17am EDT) and 14:17 UTC (9:17am EST). Exactly one of those is
-# 9am local, and this guard drops the other. Without it the send would drift to
-# 8am when daylight saving ends on the first Sunday in November - mid-season.
+# GitHub's cron only speaks UTC, so the workflow fires TWICE on each send day,
+# an hour apart (one lines up with EDT, the other with EST). The first firing
+# at or after the send hour sends; the other sees the "already sent this week"
+# mark in Firebase and stops. That also covers GitHub starting a run late -
+# a 9am send that kicks off at 10:05 still goes out, just once.
 ET = ZoneInfo("America/New_York")
 now_et = datetime.datetime.now(ET)
 today = now_et.date()
-SEND_HOUR = 9
+SEND_HOURS = {"monday": 9, "friday": 13}     # 9am invite, 1pm roster
+FIRST_SEND = datetime.date(2026, 10, 19)     # first Monday of the emails
 
 # --- Decide which send this is ---
 mode = os.environ.get("MODE", "auto").strip().lower()
-if mode not in ("monday", "wednesday", "friday"):
-    mode = {0: "monday", 2: "wednesday", 4: "friday"}.get(today.weekday(), "monday")
+if mode not in ("monday", "friday"):
+    mode = "friday" if today.weekday() == 4 else "monday"
 
-# The guard applies to scheduled runs only - a manual "Run workflow" should
-# fire whatever time you press the button.
+# The guards apply to scheduled runs only - a manual "Run workflow" fires
+# whenever you press the button.
 event = os.environ.get("GITHUB_EVENT_NAME", "")
-if event == "schedule" and now_et.hour != SEND_HOUR:
-    print("Scheduled run at %s local - not the %d o'clock hour in Michigan, "
-          "so this is the daylight-saving twin. Nothing sent."
-          % (now_et.strftime("%-I:%M %p %Z"), SEND_HOUR))
+scheduled = (event == "schedule")
+if scheduled and today < FIRST_SEND:
+    print("Scheduled run on %s - emails start %s. Nothing sent."
+          % (today, FIRST_SEND))
+    raise SystemExit(0)
+if scheduled and now_et.hour < SEND_HOURS[mode]:
+    print("Scheduled run at %s local - before the %s send time. This is the "
+          "daylight-saving twin; the later run will send."
+          % (now_et.strftime("%-I:%M %p %Z"), mode))
     raise SystemExit(0)
 
 print("[%s] Running at %s" % (mode, now_et.strftime("%a %-I:%M %p %Z")))
@@ -98,6 +107,13 @@ password = os.environ["SMTP_PASS"]
 sunday = next_sunday(today)
 when = sunday.strftime("%A, %B %-d")
 week_key = "%d-%d-%d" % (sunday.year, sunday.month, sunday.day)
+
+# --- Only once per send per week ---
+sent_ref = db.reference("paddle/meta/sent_" + mode)
+if scheduled and sent_ref.get() == week_key:
+    print("[%s] Already sent for %s - this is the second firing. Nothing sent."
+          % (mode, when))
+    raise SystemExit(0)
 
 # --- What time are we playing? Ask the Lions schedule. ---
 start_time, start_reason, confident = paddle_start(sunday)
@@ -117,10 +133,10 @@ except Exception as err:
     # The email is the thing that matters; a failed meta write must not stop it.
     print("[%s] Could not publish start time to Firebase - %s" % (mode, type(err).__name__))
 
-# --- Email is switched off (Oct 2026) ---
-# Kevin sends the invite himself now, so this run only keeps the start time on
-# the tracker page current. Set SEND_EMAIL to True to bring the emails back.
-SEND_EMAIL = False
+# --- Master switch ---
+# Emails back on (Oct 2026): Monday invite + Friday roster to the whole list.
+# Set SEND_EMAIL to False to stop them; the start time still gets published.
+SEND_EMAIL = True
 if not SEND_EMAIL:
     print("[%s] Email is off - start time published, nothing sent." % mode)
     raise SystemExit(0)
@@ -137,10 +153,7 @@ else:
 players = db.reference("paddle/players").get() or {}
 contacts = db.reference("paddle/contacts").get() or {}
 
-# --- Who to email ---
-# Monday is the original group only. Wednesday and Friday go to everyone.
-core_only = (mode == "monday")
-
+# --- Who to email: everyone on the list with an address ---
 recipients = []
 skipped = []
 for key, contact in contacts.items():
@@ -148,8 +161,6 @@ for key, contact in contacts.items():
         continue
     person = players[key] if isinstance(players[key], dict) else {}
     name = person.get("name", "")
-    if core_only and tier_of(person) != "core":
-        continue
     raw = (contact or {}).get("email", "") if isinstance(contact, dict) else ""
     if not (raw or "").strip():
         continue
@@ -204,7 +215,7 @@ if mode == "friday":
         for nm in maybe_players:
             lines.append("  %s" % nm)
     lines.append("")
-    lines.append("Haven't replied yet? There's still room - tap here to add yourself or change your reply:")
+    lines.append("Haven't replied yet, or plans changed? Find your name and update your reply here:")
     lines.append(TRACKER_URL)
     lines.append("")
     lines.append("See you Sunday!")
@@ -213,22 +224,17 @@ if mode == "friday":
     body = "\n".join(lines) + "\n"
 
 else:
-    who = ("the regulars" if mode == "monday" else "everyone on the list")
+    who = "everyone on the list"
     lines = []
     lines.append("Paddle this Sunday (%s) at %s." % (when, start_time))
     lines.append(time_line)
     lines.append("")
-    lines.append("Tap the link, add your name, say IN / MAYBE / OUT:")
+    lines.append("Tap the link, find your name, and say IN / MAYBE / OUT:")
     lines.append(TRACKER_URL)
     lines.append("")
-    if mode == "monday":
-        lines.append("This one goes to the original group. A second email goes out Wednesday "
-                     "to everyone on the list, and Friday's will have the final roster.")
-    else:
-        lines.append("Friday's email will list who's playing. Feel free to pass this link "
-                     "along to anyone you'd like to add - they can sign themselves up.")
+    lines.append("Friday afternoon you'll get an email with who's playing.")
     lines.append("")
-    lines.append("Want off the list, or prefer a text instead? Just reply and let me know.")
+    lines.append("Know someone who'd like to play, or want off the list? Just reply and let me know.")
 
     subject = "Paddle %s - %s" % (when, start_time)
     body = "\n".join(lines) + "\n"
@@ -263,16 +269,20 @@ with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
 
 print("Done. [%s] %d email(s) sent for %s." % (mode, sent, when))
 
+# Mark this week's send done so the twin firing doesn't send it again.
+if sent:
+    try:
+        sent_ref.set(week_key)
+    except Exception as err:
+        print("[%s] Could not record the send in Firebase - %s" % (mode, type(err).__name__))
+
 # --- Send receipt: a short summary to ADMIN_EMAIL, not to the group ---
 if ADMIN_EMAIL:
     receipt = ["%s send for %s." % (mode.capitalize(), when), ""]
     receipt.append("Start time: %s (%s)%s"
                    % (start_time, start_reason, "" if confident else "  <- NOT CONFIRMED"))
     receipt.append("Emails sent: %d of %d" % (sent, len(recipients)))
-    if mode == "monday":
-        receipt.append("Audience: the original group only")
-    else:
-        receipt.append("Audience: everyone on the list")
+    receipt.append("Audience: everyone on the list with an email")
     if skipped:
         receipt.append("")
         receipt.append("Unusable addresses (%d) - fix these in the tracker:" % len(skipped))

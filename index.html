@@ -114,7 +114,7 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
 </div>
 
 <div class="policy">
-  <strong>How this works:</strong> find your name and tap <strong>IN</strong>, <strong>?</strong> or <strong>OUT</strong> for this Sunday. You can change it any time.
+  <strong>How this works:</strong> find your name and tap <strong>IN</strong>, <strong>?</strong> or <strong>OUT</strong> for this Sunday. You can change it any time. You'll get an email Monday morning, and Friday afternoon an email with who's playing.
   <div class="policy-note"><strong>The start time moves with the Lions.</strong> If they play at 1:00 we start at 4:30. If they play at 4:00&ndash;4:30 we start at 3:00. Otherwise 4:00.</div>
 </div>
 
@@ -163,9 +163,12 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
   <div class="section-title">Organizer: add a player</div>
   <div class="add-player-row">
     <input type="text" id="org-name" placeholder="Player's name...">
+  </div>
+  <div class="add-player-row" style="margin-top:8px">
+    <input type="email" id="org-email" placeholder="Email (optional)">
     <button class="btn btn-primary" onclick="organizerAdd()">Add</button>
   </div>
-  <div class="hint" id="org-msg">Only shows on the organizer link. New names start as No reply.</div>
+  <div class="hint" id="org-msg">Only shows on the organizer link. New names start as No reply. To add or fix an email for someone already on the list, tap "email" next to their name.</div>
 </div>
 
 <div class="filter-tabs">
@@ -196,7 +199,7 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
   </div>
 </div>
 
-<div class="action-row">
+<div class="action-row" id="organizer-actions" style="display:none">
   <button class="btn" onclick="resetReplies()">Reset replies (new week)</button>
   <button class="btn" onclick="clearPlayers()">Clear all names</button>
 </div>
@@ -328,6 +331,20 @@ function playerRow(key, p) {
   var nameSpan = document.createElement("span");
   nameSpan.textContent = p.name;
   nd.appendChild(nameSpan);
+  if (IS_ORGANIZER) {
+    // Organizer view only: who's missing an email, and a way to set one.
+    if (!p.hasEmail) {
+      var nb = document.createElement("span");
+      nb.className = "badge";
+      nb.textContent = "no email";
+      nd.appendChild(nb);
+    }
+    var el = document.createElement("button");
+    el.className = "edit-link";
+    el.textContent = "email";
+    el.onclick = function () { editContact(key, p.name); };
+    nd.appendChild(el);
+  }
 
 
   var bd = document.createElement("div");
@@ -538,6 +555,7 @@ function copyLink() {
 // the end of the address (Kevin's bookmarked link) shows a simple add box.
 var IS_ORGANIZER = /[?&]admin(=|&|$)/.test(location.search);
 if (IS_ORGANIZER) document.getElementById("organizer-add").style.display = "block";
+if (IS_ORGANIZER) document.getElementById("organizer-actions").style.display = "flex";
 function organizerAdd() {
   var el = document.getElementById("org-name"), msg = document.getElementById("org-msg");
   var name = el.value.trim().replace(/\s+/g, " ");
@@ -546,12 +564,16 @@ function organizerAdd() {
     return (p.name || "").toLowerCase() === name.toLowerCase();
   });
   if (dup) { msg.textContent = name + " is already on the list."; el.select(); return; }
-  addPerson(name, "", "extended");
+  var em = document.getElementById("org-email"), email = em.value.trim();
+  if (email && !validEmail(email)) { msg.textContent = "That email doesn't look right. Fix it, or leave it blank."; em.focus(); return; }
+  addPerson(name, email, "extended");
   el.value = "";
+  em.value = "";
   el.focus();
-  msg.textContent = "Added " + name + ".";
+  msg.textContent = "Added " + name + (email ? " with email." : " (no email yet).");
 }
 document.getElementById("org-name").addEventListener("keydown", function (e) { if (e.key === "Enter") organizerAdd(); });
+document.getElementById("org-email").addEventListener("keydown", function (e) { if (e.key === "Enter") organizerAdd(); });
 
 document.getElementById("new-player").addEventListener("keydown", function (e) { if (e.key === "Enter") startSignup(); });
 

@@ -18,7 +18,9 @@ would do, so you can read the list before anything is written.
 Inputs (workflow_dispatch):
   APPLY   "false" (default) = dry run. "true" = actually write.
   TIER    "extended" (default) or "core" - what everyone comes in as.
-  REPLACE "false" (default) = refuse to run if paddle already has players.
+  REPLACE "false" (default) = if paddle already has players, DON'T import -
+          instead copy pickleball emails onto paddle players matched by
+          name (only fills blanks; adds and removes nobody).
           "true" = wipe the paddle roster first and re-import.
 """
 import os
@@ -51,21 +53,88 @@ dst_players = db.reference("paddle/players").get() or {}
 print("Pickleball roster: %d player(s), %d saved email(s)"
       % (len(src_players), len(src_contacts)))
 print("Paddle roster right now: %d player(s)" % len(dst_players))
-print("Importing everyone as: %s" % TIER)
 print("")
 
 if not src_players:
     print("Nothing to copy - the pickleball roster came back empty.")
     raise SystemExit(0)
 
-# --- Safety: never silently double-import or clobber an edited list ---
+# --- Paddle list already built: copy EMAILS only, matched by name ---
+# Adds nobody and removes nobody. Only fills in paddle players who don't have
+# an email yet; an email already on the paddle list is never overwritten.
 if dst_players and not REPLACE:
-    print("STOPPING. The paddle roster already has %d player(s)." % len(dst_players))
-    print("Importing again would duplicate them. If you meant to start over,")
-    print("re-run with REPLACE set to true - that wipes paddle and re-imports.")
-    raise SystemExit(1)
+    def norm(n):
+        return " ".join("".join(c for c in (n or "").lower() if c.isalpha() or c == " ").split())
+
+    dst_contacts = db.reference("paddle/contacts").get() or {}
+
+    pb_email = {}
+    for key, person in src_players.items():
+        if not isinstance(person, dict):
+            continue
+        c = src_contacts.get(key) or {}
+        e = (c.get("email", "") if isinstance(c, dict) else "").strip()
+        if e:
+            pb_email.setdefault(norm(person.get("name")), e)
+
+    copy, have, none, missing = [], [], [], []
+    for key, person in dst_players.items():
+        if not isinstance(person, dict):
+            continue
+        name = person.get("name", "")
+        existing = dst_contacts.get(key) or {}
+        if isinstance(existing, dict) and (existing.get("email") or "").strip():
+            have.append(name)
+            continue
+        n = norm(name)
+        if n in pb_email:
+            copy.append((key, name, pb_email[n]))
+        elif any(norm(p.get("name")) == n for p in src_players.values() if isinstance(p, dict)):
+            none.append(name)
+        else:
+            missing.append(name)
+
+    srt = lambda xs: sorted(xs, key=lambda x: (x[1] if isinstance(x, tuple) else x).lower())
+    print("EMAIL COPY - the paddle list already has %d player(s); nobody is added or removed."
+          % len(dst_players))
+    print("")
+    print("Will copy an email for %d player(s):" % len(copy))
+    for _, name, e in srt(copy):
+        print("   %-24s %s" % (name, e))
+    if have:
+        print("")
+        print("Already have an email on the paddle list (left alone): %d" % len(have))
+        for name in srt(have):
+            print("   %s" % name)
+    if none:
+        print("")
+        print("On the pickleball list but no email there either (%d):" % len(none))
+        for name in srt(none):
+            print("   %s" % name)
+    if missing:
+        print("")
+        print("Not on the pickleball list - add their email from the organizer link (%d):" % len(missing))
+        for name in srt(missing):
+            print("   %s" % name)
+    print("")
+
+    if not APPLY:
+        print("DRY RUN - nothing was written.")
+        print("Happy with the list? Run it again with APPLY set to true.")
+        raise SystemExit(0)
+
+    upd_c, upd_p = {}, {}
+    for key, _, e in copy:
+        upd_c[key] = {"email": e}
+        upd_p[key + "/hasEmail"] = True
+    if upd_c:
+        db.reference("paddle/contacts").update(upd_c)
+        db.reference("paddle/players").update(upd_p)
+    print("Done. Copied %d email(s) onto the paddle list." % len(upd_c))
+    raise SystemExit(0)
 
 # --- Build the new roster ---
+print("Importing everyone as: %s" % TIER)
 new_players, new_contacts = {}, {}
 rows = []
 for key, person in src_players.items():
