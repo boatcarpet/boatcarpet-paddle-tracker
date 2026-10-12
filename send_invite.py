@@ -56,6 +56,16 @@ def clean_email(raw):
     return e
 
 
+def masked(e):
+    """This repo is public, so its Actions logs are too. Full addresses go
+    only in the private receipt email, never in the log."""
+    e = str(e or "")
+    if "@" not in e:
+        return "(unusable: %d chars)" % len(e)
+    local, domain = e.split("@", 1)
+    return local[:1] + "****@" + domain
+
+
 def tier_of(person):
     """Everyone is a guest unless explicitly marked as one of the regulars."""
     return "core" if (person or {}).get("tier") == "core" else "extended"
@@ -71,7 +81,7 @@ ET = ZoneInfo("America/New_York")
 now_et = datetime.datetime.now(ET)
 today = now_et.date()
 SEND_HOURS = {"monday": 9, "friday": 13}     # 9am invite, 1pm roster
-FIRST_SEND = datetime.date(2026, 10, 19)     # first Monday of the emails
+FIRST_SEND = datetime.date(2026, 10, 12)     # emails start the week of Oct 12
 
 # --- Decide which send this is ---
 mode = os.environ.get("MODE", "auto").strip().lower()
@@ -181,7 +191,7 @@ recipients = [(n, e) for (n, e) in recipients if e.lower() != user.lower()]
 if skipped:
     print("[%s] Skipped %d unusable address(es):" % (mode, len(skipped)))
     for name, raw in skipped:
-        print("    %s -> %r" % (name or "(no name)", raw))
+        print("    %s -> %s" % (name or "(no name)", masked(raw)))
 
 if not recipients:
     print("[%s] No matching emails. Nothing to send." % mode)
@@ -258,14 +268,14 @@ with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             # Gmail rejected this one address. Note it and keep going -
             # one bad address must never stop everyone else's email.
             failed.append((name, email, "refused: %s" % err))
-            print("[%s] REFUSED %s <%s> - skipping" % (mode, name or "(no name)", email))
+            print("[%s] REFUSED %s <%s> - skipping" % (mode, name or "(no name)", masked(email)))
             continue
         except smtplib.SMTPException as err:
             failed.append((name, email, "smtp error: %s" % err))
-            print("[%s] FAILED %s <%s> - %s" % (mode, name or "(no name)", email, type(err).__name__))
+            print("[%s] FAILED %s <%s> - %s" % (mode, name or "(no name)", masked(email), type(err).__name__))
             continue
         sent += 1
-        print("[%s] Sent to %s <%s>" % (mode, name or "(no name)", email))
+        print("[%s] Sent to %s <%s>" % (mode, name or "(no name)", masked(email)))
 
 print("Done. [%s] %d email(s) sent for %s." % (mode, sent, when))
 
@@ -308,10 +318,10 @@ if ADMIN_EMAIL:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(user, password)
             server.send_message(note)
-        print("[%s] Receipt sent to %s" % (mode, ADMIN_EMAIL))
+        print("[%s] Receipt sent to %s" % (mode, masked(ADMIN_EMAIL)))
     except smtplib.SMTPException as err:
         # A receipt problem must never mask the real send result.
-        print("[%s] Could not send receipt to %s - %s" % (mode, ADMIN_EMAIL, type(err).__name__))
+        print("[%s] Could not send receipt to %s - %s" % (mode, masked(ADMIN_EMAIL), type(err).__name__))
 
 # Everyone who could be reached has been. Problems are listed below,
 # but the run still exits clean - the receipt carries the same list by email.
@@ -319,7 +329,7 @@ if skipped or failed:
     print("")
     print("--- Needs attention ---")
     for name, raw in skipped:
-        print("  Unusable address: %s -> %r" % (name or "(no name)", raw))
+        print("  Unusable address: %s -> %s" % (name or "(no name)", masked(raw)))
     for name, email, why in failed:
-        print("  Not delivered: %s <%s> - %s" % (name or "(no name)", email, why))
+        print("  Not delivered: %s <%s> - %s" % (name or "(no name)", masked(email), type(why).__name__ if not isinstance(why, str) else why.split(":")[0]))
     print("Fix these in the tracker, then they'll be included next time.")

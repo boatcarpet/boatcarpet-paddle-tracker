@@ -32,6 +32,15 @@ from firebase_admin import credentials, db
 DATABASE_URL = "https://wednesday-tennis-tracker-default-rtdb.firebaseio.com"
 
 
+def masked(e):
+    """This repo is public, so its Actions logs are too - never print a full
+    address. jdyla@comcast.net -> j****@comcast.net"""
+    if not e or "@" not in e:
+        return "(blank)"
+    local, domain = e.split("@", 1)
+    return local[:1] + "****@" + domain
+
+
 def flag(name, default="false"):
     return os.environ.get(name, default).strip().lower() in ("true", "1", "yes")
 
@@ -100,7 +109,7 @@ if dst_players and not REPLACE:
     print("")
     print("Will copy an email for %d player(s):" % len(copy))
     for _, name, e in srt(copy):
-        print("   %-24s %s" % (name, e))
+        print("   %-24s %s" % (name, masked(e)))
     if have:
         print("")
         print("Already have an email on the paddle list (left alone): %d" % len(have))
@@ -162,7 +171,7 @@ with_email = sum(1 for _, e in rows if e)
 
 print("Would import %d player(s), %d with an email:" % (len(rows), with_email))
 for name, email in rows:
-    print("   %-24s %s" % (name, email or "(no email - won't get the auto-send)"))
+    print("   %-24s %s" % (name, masked(email) if email else "(no email - won't get the auto-send)"))
 print("")
 
 if not APPLY:
