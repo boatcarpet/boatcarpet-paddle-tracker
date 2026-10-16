@@ -324,7 +324,8 @@ function playerRow(key, p) {
   cb.checked = selected.has(key);
   cb.title = "Select for bulk edit";
   cb.onchange = function () { toggleSelect(key, cb.checked); };
-  row.appendChild(cb);
+  // Checkboxes (bulk edit / bulk remove) are organizer-only.
+  if (IS_ORGANIZER) row.appendChild(cb);
 
   var nd = document.createElement("div");
   nd.className = "player-name";
@@ -365,7 +366,9 @@ function playerRow(key, p) {
 
   row.appendChild(nd);
   row.appendChild(bd);
-  row.appendChild(rb);
+  // Only the organizer link can take someone off the list. Players were
+  // tapping the x thinking it meant "not this week" and deleting themselves.
+  if (IS_ORGANIZER) row.appendChild(rb);
   return row;
 }
 
@@ -430,6 +433,7 @@ function bulkTier(tier) {
   selected.clear();
 }
 function bulkRemove() {
+  if (!IS_ORGANIZER) return;
   var n = selected.size;
   if (!n) return;
   var names = selectedNames();
@@ -449,6 +453,7 @@ function toggleTier(key, current) {
   playersRef.child(key).update({ tier: current === "core" ? "extended" : "core" });
 }
 function remove(key, name) {
+  if (!IS_ORGANIZER) return;
   if (!confirm("Remove " + name + " from the list?")) return;
   playersRef.child(key).remove();
   contactsRef.child(key).remove();
@@ -556,6 +561,7 @@ function copyLink() {
 var IS_ORGANIZER = /[?&]admin(=|&|$)/.test(location.search);
 if (IS_ORGANIZER) document.getElementById("organizer-add").style.display = "block";
 if (IS_ORGANIZER) document.getElementById("organizer-actions").style.display = "flex";
+if (!IS_ORGANIZER) document.getElementById("select-all").style.display = "none";
 function organizerAdd() {
   var el = document.getElementById("org-name"), msg = document.getElementById("org-msg");
   var name = el.value.trim().replace(/\s+/g, " ");
