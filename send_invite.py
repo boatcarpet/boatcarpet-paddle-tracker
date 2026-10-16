@@ -199,7 +199,7 @@ if not recipients:
 
 # --- Message wording per send ---
 if mode == "friday":
-    in_players, maybe_players = [], []
+    in_players, maybe_players, out_players = [], [], []
     for person in players.values():
         if not isinstance(person, dict):
             continue
@@ -209,8 +209,11 @@ if mode == "friday":
             in_players.append(nm)
         elif st == "maybe":
             maybe_players.append(nm)
+        elif st == "out":
+            out_players.append(nm)
     in_players.sort(key=lambda s: s.lower())
     maybe_players.sort(key=lambda s: s.lower())
+    out_players.sort(key=lambda s: s.lower())
 
     lines = []
     lines.append("Here's who's playing paddle this Sunday (%s)." % when)
@@ -223,6 +226,11 @@ if mode == "friday":
         lines.append("")
         lines.append("MAYBE (%d):" % len(maybe_players))
         for nm in maybe_players:
+            lines.append("  %s" % nm)
+    if out_players:
+        lines.append("")
+        lines.append("OUT (%d):" % len(out_players))
+        for nm in out_players:
             lines.append("  %s" % nm)
     lines.append("")
     lines.append("Haven't replied yet, or plans changed? Find your name and update your reply here:")
