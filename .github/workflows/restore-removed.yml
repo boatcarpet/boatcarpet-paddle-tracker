@@ -1,0 +1,45 @@
+name: Restore removed players
+
+# Manual only. Defaults to a preview that emails Kevin the list.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Actually add them back? Leave false first to get the preview email."
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      skip:
+        description: "Names to leave off, comma separated (optional)"
+        default: ""
+        type: string
+      since:
+        description: "Look at emails sent since (YYYY-MM-DD)"
+        default: "2026-10-12"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install firebase-admin requests
+      - name: Find and restore removed players
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLY: ${{ github.event.inputs.apply }}
+          SKIP: ${{ github.event.inputs.skip }}
+          SINCE: ${{ github.event.inputs.since }}
+        run: python restore_removed.py
