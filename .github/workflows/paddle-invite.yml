@@ -8,9 +8,11 @@ on:
     # Mon -> invite to everyone on the list, ~9:15am ET
     - cron: "17 13 * * 1"   # 9:17am EDT / 8:17am EST
     - cron: "17 14 * * 1"   # 10:17am EDT / 9:17am EST
+    - cron: "47 16 * * 1"   # 12:47pm EDT / 11:47am EST - backup if GitHub drops the others
     # Fri -> roster of who's playing, ~1:15pm ET
     - cron: "17 17 * * 5"   # 1:17pm EDT / 12:17pm EST
     - cron: "17 18 * * 5"   # 2:17pm EDT / 1:17pm EST
+    - cron: "47 19 * * 5"   # 3:47pm EDT / 2:47pm EST - backup if GitHub drops the others
   workflow_dispatch:        # "Run workflow" button for testing on demand
     inputs:
       mode:
