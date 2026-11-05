@@ -400,15 +400,17 @@ function playerRow(key, p) {
 
   row.appendChild(nd);
   row.appendChild(bd);
+
+  // Only the organizer link can take someone off the list. Players were
+  // tapping the x thinking it meant "not this week" and deleting themselves.
+  if (IS_ORGANIZER) row.appendChild(rb);
+  // Organizer view: when this reply last changed, on its own line under the buttons.
   if (IS_ORGANIZER && p.changedAt && p.status !== "waiting") {
     var ch = document.createElement("div");
     ch.className = "changed";
     ch.textContent = "Last changed " + when(p.changedAt) + (p.changedBy ? " · device " + p.changedBy : "");
     row.appendChild(ch);
   }
-  // Only the organizer link can take someone off the list. Players were
-  // tapping the x thinking it meant "not this week" and deleting themselves.
-  if (IS_ORGANIZER) row.appendChild(rb);
   return row;
 }
 
