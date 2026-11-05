@@ -84,6 +84,15 @@ header h1 { font-size: 2rem; color: #1f3a5f; }
 .bulkbar button.danger { border-color: #f3a79c; color: #ffd9d4; }
 .bulkbar button.danger:hover { background: rgba(192,57,43,0.55); }
 .action-row { display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+.changed { font-size: 0.72rem; color: #7a8794; width: 100%; padding-left: 2px; }
+.notice { display: none; background: #fdecea; color: #a5281b; border: 1px solid #f3b6ad; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.85rem; text-align: center; }
+.notice.show { display: block; }
+.log-list { font-size: 0.82rem; color: #333; line-height: 1.5; max-height: 420px; overflow-y: auto; }
+.log-row { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px solid #eef1f4; flex-wrap: wrap; }
+.log-when { color: #7a8794; min-width: 118px; font-variant-numeric: tabular-nums; }
+.log-dev { color: #7a8794; font-size: 0.75rem; }
+.log-st { font-weight: 700; }
+.log-st.in { color: #1f7a5c; } .log-st.maybe { color: #b8860b; } .log-st.out { color: #c0392b; } .log-st.waiting { color: #999; }
 footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40px; }
 @media (max-width: 500px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
@@ -187,6 +196,7 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
   <button onclick="clearSelection()">Cancel</button>
 </div>
 
+<div class="notice" id="tap-notice"></div>
 <div class="player-list" id="player-list"></div>
 <div class="empty" id="empty-state" style="display:none">No one on the list yet.</div>
 
@@ -197,6 +207,12 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
     <button class="btn btn-primary" onclick="copyText()">Copy invite</button>
     <button class="btn" onclick="copyLink()">Copy link only</button>
   </div>
+</div>
+
+<div class="card" id="organizer-log" style="display:none;margin-top:16px">
+  <div class="section-title">Organizer: reply history this week</div>
+  <div class="hint" style="margin:-6px 0 10px">Every IN / ? / OUT tap since this week's reset, newest first. "Device" is a short tag for the phone or computer that tapped, so you can spot one device changing several people.</div>
+  <div class="log-list" id="log-list">No replies yet this week.</div>
 </div>
 
 <div class="action-row" id="organizer-actions" style="display:none">
@@ -228,9 +244,27 @@ var contactsRef = db.ref("paddle/contacts");  // private: email (write-only from
 var metaRef     = db.ref("paddle/meta");      // weekKey + the start time the workflow computed
 
 var DEFAULT_START = "4:00 PM";
+var logRef = db.ref("paddle/log");            // reply history: who changed what, when, from which device
+
+// A short random tag for this phone/computer, kept in its browser, so the
+// history can show when one device changes several people.
+var DEVICE = (function () {
+  var id = "";
+  try { id = localStorage.getItem("paddleDevice") || ""; } catch (e) {}
+  if (!id) {
+    id = Math.random().toString(36).slice(2, 8);
+    try { localStorage.setItem("paddleDevice", id); } catch (e) {}
+  }
+  var ua = navigator.userAgent, kind =
+    /iPad/.test(ua) ? "iPad" : /iPhone/.test(ua) ? "iPhone" : /Android/.test(ua) ? "Android" :
+    /Macintosh/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Other";
+  return { id: id, label: kind + " " + id.slice(0, 4) };
+})();
 var F = "all", players = {}, selected = new Set();
 
+var CONNECTED = false;
 db.ref(".info/connected").on("value", function (s) {
+  CONNECTED = !!s.val();
   var el = document.getElementById("conn-status");
   if (s.val()) { el.textContent = "Live — everyone sees replies as they come in"; el.className = "status-bar connected"; }
   else { el.textContent = "Reconnecting..."; el.className = "status-bar disconnected"; }
@@ -366,6 +400,12 @@ function playerRow(key, p) {
 
   row.appendChild(nd);
   row.appendChild(bd);
+  if (IS_ORGANIZER && p.changedAt && p.status !== "waiting") {
+    var ch = document.createElement("div");
+    ch.className = "changed";
+    ch.textContent = "Last changed " + when(p.changedAt) + (p.changedBy ? " · device " + p.changedBy : "");
+    row.appendChild(ch);
+  }
   // Only the organizer link can take someone off the list. Players were
   // tapping the x thinking it meant "not this week" and deleting themselves.
   if (IS_ORGANIZER) row.appendChild(rb);
@@ -448,7 +488,28 @@ function bulkRemove() {
   selected.clear();
 }
 
-function setStatus(key, status) { playersRef.child(key).update({ status: status }); }
+function when(ms) {
+  return new Date(ms).toLocaleString("en-US", { weekday: "short", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+var noticeTimer;
+function notice(msg) {
+  var n = document.getElementById("tap-notice");
+  n.textContent = msg; n.className = "notice show";
+  clearTimeout(noticeTimer); noticeTimer = setTimeout(function () { n.className = "notice"; }, 6000);
+}
+function setStatus(key, status) {
+  var p = players[key];
+  if (!p) return;
+  // Only save while connected. Firebase would otherwise hold the tap and send it
+  // whenever this device reconnects, sometimes hours later, overwriting newer replies.
+  if (!CONNECTED) { notice("Not connected right now, so that tap was not saved. Check your connection and tap again."); return; }
+  if (p.status === status) return;
+  var at = firebase.database.ServerValue.TIMESTAMP;
+  playersRef.child(key).update({ status: status, tapAt: Date.now(), changedAt: at, changedBy: DEVICE.label })
+    .catch(function () { notice("That tap didn't save. Refresh the page and try again."); });
+  logRef.push({ key: key, name: p.name, from: p.status || "waiting", status: status,
+                at: at, dev: DEVICE.label, week: weekKey() });
+}
 function toggleTier(key, current) {
   playersRef.child(key).update({ tier: current === "core" ? "extended" : "core" });
 }
@@ -532,7 +593,11 @@ function resetReplies() {
 }
 function doReset() {
   var upd = {};
-  Object.keys(players).forEach(function (k) { upd[k + "/status"] = "waiting"; });
+  var t = Date.now();
+  Object.keys(players).forEach(function (k) {
+    upd[k + "/status"] = "waiting"; upd[k + "/tapAt"] = t;
+    upd[k + "/changedAt"] = null; upd[k + "/changedBy"] = null;
+  });
   if (Object.keys(upd).length) playersRef.update(upd);
   metaRef.child("weekKey").set(weekKey());
 }
@@ -561,6 +626,27 @@ function copyLink() {
 var IS_ORGANIZER = /[?&]admin(=|&|$)/.test(location.search);
 if (IS_ORGANIZER) document.getElementById("organizer-add").style.display = "block";
 if (IS_ORGANIZER) document.getElementById("organizer-actions").style.display = "flex";
+if (IS_ORGANIZER) {
+  document.getElementById("organizer-log").style.display = "block";
+  logRef.orderByChild("at").limitToLast(300).on("value", function (snap) {
+    var rows = [];
+    snap.forEach(function (c) { var v = c.val(); if (v && v.week === weekKey()) rows.push(v); });
+    rows.reverse();
+    var el = document.getElementById("log-list");
+    if (!rows.length) { el.textContent = "No replies yet this week."; return; }
+    var label = { in: "IN", maybe: "MAYBE", out: "OUT", waiting: "No reply" };
+    el.innerHTML = "";
+    rows.forEach(function (v) {
+      var r = document.createElement("div"); r.className = "log-row";
+      var a = document.createElement("span"); a.className = "log-when"; a.textContent = v.at ? when(v.at) : "";
+      var b = document.createElement("span"); b.textContent = v.name + ": ";
+      var c = document.createElement("span"); c.className = "log-st " + v.status; c.textContent = label[v.status] || v.status;
+      var d = document.createElement("span"); d.className = "log-dev"; d.textContent = "(was " + (label[v.from] || v.from) + ", device " + v.dev + ")";
+      r.appendChild(a); r.appendChild(b); b.appendChild(c); r.appendChild(d);
+      el.appendChild(r);
+    });
+  });
+}
 if (!IS_ORGANIZER) document.getElementById("select-all").style.display = "none";
 function organizerAdd() {
   var el = document.getElementById("org-name"), msg = document.getElementById("org-msg");
