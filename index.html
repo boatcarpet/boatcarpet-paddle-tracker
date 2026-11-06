@@ -408,7 +408,8 @@ function playerRow(key, p) {
   if (IS_ORGANIZER && p.changedAt && p.status !== "waiting") {
     var ch = document.createElement("div");
     ch.className = "changed";
-    ch.textContent = "Last changed " + when(p.changedAt) + (p.changedBy ? " · device " + p.changedBy : "");
+    ch.textContent = "Last changed " + when(p.changedAt) + (p.changedBy ? " · device " + p.changedBy : "") +
+                     (ownerOf(key) && ownerOf(key) !== p.changedBy ? " · their device " + ownerOf(key) : "");
     row.appendChild(ch);
   }
   return row;
@@ -499,18 +500,51 @@ function notice(msg) {
   n.textContent = msg; n.className = "notice show";
   clearTimeout(noticeTimer); noticeTimer = setTimeout(function () { n.className = "notice"; }, 6000);
 }
+// ---- Whose reply is it? ----
+// The first phone/computer (other than Kevin's) that answers for a name becomes
+// that name's device. Another device can still change it, but only after a
+// "this was set from another device" confirm, and the history marks it.
+// Names that were answered before this existed take their device from the
+// history, skipping Kevin's own devices and the computer that was changing
+// other people's replies on Fri 11/6.
+var KEVIN_DEVICES = ["Windows 07fn", "Android 5qpg"];   // never prompted, never claim a name
+var ALWAYS_ASK = ["Windows 0w8k"];                      // always prompted, never claims a name
+var NOT_OWNERS = KEVIN_DEVICES.concat(ALWAYS_ASK);
+var logOwner = {};
+logRef.orderByChild("at").once("value", function (snap) {
+  snap.forEach(function (c) {
+    var v = c.val();
+    if (v && v.key && v.dev && !logOwner[v.key] && NOT_OWNERS.indexOf(v.dev) < 0) logOwner[v.key] = v.dev;
+  });
+});
+function ownerOf(key) { var p = players[key] || {}; return p.owner || logOwner[key] || ""; }
+
 function setStatus(key, status) {
   var p = players[key];
   if (!p) return;
+  var owner = ownerOf(key), claim = {}, override = false;
+  var trusted = IS_ORGANIZER || KEVIN_DEVICES.indexOf(DEVICE.label) >= 0;
+  var suspect = ALWAYS_ASK.indexOf(DEVICE.label) >= 0;
+  if (!trusted) {
+    if (!owner && !suspect) claim.owner = DEVICE.label;   // first answer for this name
+    else if (suspect || owner !== DEVICE.label) {
+      var label = { in: "IN", maybe: "MAYBE (?)", out: "OUT" }[status];
+      if (!confirm(p.name + "'s reply was set from another phone or computer.\n\n" +
+                   "Change " + p.name + " to " + label + "?")) return;
+      override = true;
+    }
+  }
   // Only save while connected. Firebase would otherwise hold the tap and send it
   // whenever this device reconnects, sometimes hours later, overwriting newer replies.
   if (!CONNECTED) { notice("Not connected right now, so that tap was not saved. Check your connection and tap again."); return; }
   if (p.status === status) return;
   var at = firebase.database.ServerValue.TIMESTAMP;
-  playersRef.child(key).update({ status: status, tapAt: Date.now(), changedAt: at, changedBy: DEVICE.label })
+  var upd = { status: status, tapAt: Date.now(), changedAt: at, changedBy: DEVICE.label };
+  if (claim.owner) upd.owner = claim.owner;
+  playersRef.child(key).update(upd)
     .catch(function () { notice("That tap didn't save. Refresh the page and try again."); });
   logRef.push({ key: key, name: p.name, from: p.status || "waiting", status: status,
-                at: at, dev: DEVICE.label, week: weekKey() });
+                at: at, dev: DEVICE.label, week: weekKey(), other: override || null, org: IS_ORGANIZER || null });
 }
 function toggleTier(key, current) {
   playersRef.child(key).update({ tier: current === "core" ? "extended" : "core" });
@@ -644,6 +678,7 @@ if (IS_ORGANIZER) {
       var b = document.createElement("span"); b.textContent = v.name + ": ";
       var c = document.createElement("span"); c.className = "log-st " + v.status; c.textContent = label[v.status] || v.status;
       var d = document.createElement("span"); d.className = "log-dev"; d.textContent = "(was " + (label[v.from] || v.from) + ", device " + v.dev + ")";
+      if (v.other) { var w = document.createElement("span"); w.className = "log-st out"; w.textContent = "changed someone else's reply"; d.appendChild(document.createTextNode(" ")); d.appendChild(w); }
       r.appendChild(a); r.appendChild(b); b.appendChild(c); r.appendChild(d);
       el.appendChild(r);
     });
