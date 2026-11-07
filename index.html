@@ -71,6 +71,15 @@ header h1 { font-size: 2rem; color: #1f3a5f; }
 .status-btn.maybe.active { background: #b8860b; color: white; }
 .status-btn.out { border-color: #c0392b; color: #c0392b; background: white; }
 .status-btn.out.active { background: #c0392b; color: white; }
+.status-read { font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 6px; color: #999; background: #f1f3f5; min-width: 54px; text-align: center; }
+.status-read.in { color: #1f7a5c; background: #e3f3ea; } .status-read.maybe { color: #9a6f08; background: #fbf1d6; } .status-read.out { color: #c0392b; background: #fbe4e1; }
+.player-row.mine { border-width: 2px; }
+.whoami { background: #fff; border: 2px solid #1f3a5f; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+.whoami .t { font-weight: 700; color: #1f3a5f; margin-bottom: 8px; }
+.whoami .r { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.whoami select { flex: 1; min-width: 180px; padding: 9px 10px; border: 1px solid #ccd5de; border-radius: 8px; font-size: 0.95rem; background: #fff; }
+.whoami .links { margin-top: 8px; font-size: 0.82rem; color: #64748b; }
+.whoami .links button { background: none; border: none; color: #1f3a5f; text-decoration: underline; cursor: pointer; font-size: 0.82rem; padding: 0; margin-right: 12px; }
 .remove-btn { background: none; border: none; color: #ccc; cursor: pointer; font-size: 1.1rem; padding: 2px 4px; }
 .remove-btn:hover { color: #c0392b; }
 .row-check { width: 17px; height: 17px; accent-color: #1f3a5f; cursor: pointer; flex: 0 0 auto; margin-right: 2px; }
@@ -123,7 +132,7 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
 </div>
 
 <div class="policy">
-  <strong>How this works:</strong> find your name and tap <strong>IN</strong>, <strong>?</strong> or <strong>OUT</strong> for this Sunday. You can change it any time. You'll get an email Monday morning, and Friday afternoon an email with who's playing.
+  <strong>How this works:</strong> pick your name once in the box below, then tap <strong>IN</strong>, <strong>?</strong> or <strong>OUT</strong> for this Sunday. You can change it any time. You'll get an email Monday morning, and Friday afternoon an email with who's playing.
   <div class="policy-note"><strong>The start time moves with the Lions.</strong> If they play at 1:00 we start at 4:30. If they play at 4:00&ndash;4:30 we start at 3:00. Otherwise 4:00.</div>
 </div>
 
@@ -196,6 +205,7 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
   <button onclick="clearSelection()">Cancel</button>
 </div>
 
+<div class="whoami" id="whoami" style="display:none"></div>
 <div class="notice" id="tap-notice"></div>
 <div class="player-list" id="player-list"></div>
 <div class="empty" id="empty-state" style="display:none">No one on the list yet.</div>
@@ -384,6 +394,12 @@ function playerRow(key, p) {
 
   var bd = document.createElement("div");
   bd.className = "status-btns";
+  if (!canAnswer(key)) {
+    var rd = document.createElement("span");
+    rd.className = "status-read " + p.status;
+    rd.textContent = { in: "IN", maybe: "?", out: "OUT" }[p.status] || "—";
+    bd.appendChild(rd);
+  } else
   ["in", "maybe", "out"].forEach(function (s) {
     var b = document.createElement("button");
     b.className = "status-btn " + s + (p.status === s ? " active" : "");
@@ -398,6 +414,7 @@ function playerRow(key, p) {
   rb.title = "Remove from list";
   rb.onclick = function () { remove(key, p.name); };
 
+  if (MINE.indexOf(key) >= 0 && !IS_ORGANIZER) row.className += " mine";
   row.appendChild(nd);
   row.appendChild(bd);
 
@@ -408,8 +425,7 @@ function playerRow(key, p) {
   if (IS_ORGANIZER && p.changedAt && p.status !== "waiting") {
     var ch = document.createElement("div");
     ch.className = "changed";
-    ch.textContent = "Last changed " + when(p.changedAt) + (p.changedBy ? " · device " + p.changedBy : "") +
-                     (ownerOf(key) && ownerOf(key) !== p.changedBy ? " · their device " + ownerOf(key) : "");
+    ch.textContent = "Last changed " + when(p.changedAt) + (p.changedBy ? " · device " + p.changedBy : "");
     row.appendChild(ch);
   }
   return row;
@@ -418,7 +434,10 @@ function playerRow(key, p) {
 function render() {
   var list = document.getElementById("player-list");
   list.innerHTML = "";
-  var sorted = Object.entries(players).sort(function (a, b) { return a[1].name.localeCompare(b[1].name); });
+  var sorted = Object.entries(players).sort(function (a, b) {
+    var ma = MINE.indexOf(a[0]) >= 0 ? 0 : 1, mb = MINE.indexOf(b[0]) >= 0 ? 0 : 1;
+    return (IS_ORGANIZER ? 0 : ma - mb) || a[1].name.localeCompare(b[1].name);
+  });
   var filtered = sorted.filter(function (e) { return F === "all" || e[1].status === F; });
 
   document.getElementById("empty-state").style.display = sorted.length ? "none" : "block";
@@ -427,6 +446,7 @@ function render() {
 
   counts();
   updateBulkBar();
+  renderWhoAmI();
 }
 
 // ---- Bulk edit ----
@@ -500,51 +520,63 @@ function notice(msg) {
   n.textContent = msg; n.className = "notice show";
   clearTimeout(noticeTimer); noticeTimer = setTimeout(function () { n.className = "notice"; }, 6000);
 }
-// ---- Whose reply is it? ----
-// The first phone/computer (other than Kevin's) that answers for a name becomes
-// that name's device. Another device can still change it, but only after a
-// "this was set from another device" confirm, and the history marks it.
-// Names that were answered before this existed take their device from the
-// history, skipping Kevin's own devices and the computer that was changing
-// other people's replies on Fri 11/6.
-var KEVIN_DEVICES = ["Windows 07fn", "Android 5qpg"];   // never prompted, never claim a name
-var ALWAYS_ASK = ["Windows 0w8k"];                      // always prompted, never claims a name
-var NOT_OWNERS = KEVIN_DEVICES.concat(ALWAYS_ASK);
-var logOwner = {};
-logRef.orderByChild("at").once("value", function (snap) {
-  snap.forEach(function (c) {
-    var v = c.val();
-    if (v && v.key && v.dev && !logOwner[v.key] && NOT_OWNERS.indexOf(v.dev) < 0) logOwner[v.key] = v.dev;
-  });
-});
-function ownerOf(key) { var p = players[key] || {}; return p.owner || logOwner[key] || ""; }
+// ---- Pick your name ----
+// Email security scanners open the link from the weekly email on a throwaway
+// computer and click buttons, which was flipping people's replies (several rows
+// within one second). So each phone/computer first picks whose reply it gives;
+// only those rows get IN / ? / OUT. The organizer link can change anyone.
+var MINE = [];
+try { MINE = JSON.parse(localStorage.getItem("paddleMine") || "[]") || []; } catch (e) { MINE = []; }
+var BOT = !!navigator.webdriver;   // automated browsers announce themselves here
+function saveMine() { try { localStorage.setItem("paddleMine", JSON.stringify(MINE)); } catch (e) {} }
+function canAnswer(key) { return IS_ORGANIZER || (!BOT && MINE.indexOf(key) >= 0); }
+
+function renderWhoAmI() {
+  var box = document.getElementById("whoami");
+  if (IS_ORGANIZER) { box.style.display = "none"; return; }
+  MINE = MINE.filter(function (k) { return players[k]; });   // drop anyone since removed
+  var names = Object.entries(players).sort(function (a, b) { return a[1].name.localeCompare(b[1].name); });
+  var opts = '<option value="">Choose your name…</option>' + names
+    .filter(function (e) { return MINE.indexOf(e[0]) < 0; })
+    .map(function (e) { return '<option value="' + e[0] + '">' + esc(e[1].name) + "</option>"; }).join("");
+  box.style.display = "block";
+  if (!MINE.length) {
+    box.innerHTML = '<div class="t">First, find your name</div>' +
+      '<div class="r"><select id="pick-name" aria-label="Your name">' + opts + '</select>' +
+      '<button class="btn btn-primary" id="pick-btn">That\'s me</button></div>' +
+      '<div class="hint">You only do this once on this phone or computer. Then tap IN, ? or OUT next to your name. Answering for your partner too? You can add them next.</div>';
+  } else {
+    var mine = MINE.map(function (k) { return esc(players[k].name); }).join(" and ");
+    box.innerHTML = '<div class="t">Replying as ' + mine + '</div>' +
+      '<div class="r" id="add-row" style="display:none"><select id="pick-name" aria-label="Also answering for">' + opts + '</select>' +
+      '<button class="btn btn-primary" id="pick-btn">Add</button></div>' +
+      '<div class="links"><button id="add-link">I also answer for someone (partner)</button><button id="switch-link">Not you? Switch</button></div>';
+    document.getElementById("add-link").onclick = function () { document.getElementById("add-row").style.display = "flex"; this.style.display = "none"; };
+    document.getElementById("switch-link").onclick = function () { MINE = []; saveMine(); render(); };
+  }
+  document.getElementById("pick-btn").onclick = function () {
+    var k = document.getElementById("pick-name").value;
+    if (!k || !players[k]) return;
+    if (MINE.indexOf(k) < 0) MINE.push(k);
+    saveMine(); render();
+  };
+}
+function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 
 function setStatus(key, status) {
   var p = players[key];
   if (!p) return;
-  var owner = ownerOf(key), claim = {}, override = false;
-  var trusted = IS_ORGANIZER || KEVIN_DEVICES.indexOf(DEVICE.label) >= 0;
-  var suspect = ALWAYS_ASK.indexOf(DEVICE.label) >= 0;
-  if (!trusted) {
-    if (!owner && !suspect) claim.owner = DEVICE.label;   // first answer for this name
-    else if (suspect || owner !== DEVICE.label) {
-      var label = { in: "IN", maybe: "MAYBE (?)", out: "OUT" }[status];
-      if (!confirm(p.name + "'s reply was set from another phone or computer.\n\n" +
-                   "Change " + p.name + " to " + label + "?")) return;
-      override = true;
-    }
-  }
+  if (!canAnswer(key)) return;
   // Only save while connected. Firebase would otherwise hold the tap and send it
   // whenever this device reconnects, sometimes hours later, overwriting newer replies.
   if (!CONNECTED) { notice("Not connected right now, so that tap was not saved. Check your connection and tap again."); return; }
   if (p.status === status) return;
   var at = firebase.database.ServerValue.TIMESTAMP;
   var upd = { status: status, tapAt: Date.now(), changedAt: at, changedBy: DEVICE.label };
-  if (claim.owner) upd.owner = claim.owner;
   playersRef.child(key).update(upd)
     .catch(function () { notice("That tap didn't save. Refresh the page and try again."); });
   logRef.push({ key: key, name: p.name, from: p.status || "waiting", status: status,
-                at: at, dev: DEVICE.label, week: weekKey(), other: override || null, org: IS_ORGANIZER || null });
+                at: at, dev: DEVICE.label, week: weekKey(), org: IS_ORGANIZER || null });
 }
 function toggleTier(key, current) {
   playersRef.child(key).update({ tier: current === "core" ? "extended" : "core" });
