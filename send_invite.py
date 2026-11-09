@@ -3,7 +3,7 @@ Sunday Paddle Tennis emails.
 
 Two sends, decided automatically by the day it runs, both to everyone on
 the list who has an email:
-  - MONDAY 9am   -> this week's invite: find your name, tap IN / MAYBE / OUT
+  - MONDAY 9am   -> this week's invite: find your name, tap IN or OUT
   - FRIDAY 1pm   -> the roster: who's playing Sunday
 
 Nothing goes out before FIRST_SEND (the first Monday of the email era).
@@ -247,7 +247,7 @@ else:
     lines.append("Paddle this Sunday (%s) at %s." % (when, start_time))
     lines.append(time_line)
     lines.append("")
-    lines.append("Tap the link, find your name, and say IN / MAYBE / OUT:")
+    lines.append("Tap the link, find your name, and say IN or OUT:")
     lines.append(TRACKER_URL)
     lines.append("")
     lines.append("Friday afternoon you'll get an email with who's playing.")
