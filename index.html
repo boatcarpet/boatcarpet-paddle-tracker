@@ -15,7 +15,7 @@ header h1 { font-size: 2rem; color: #1f3a5f; }
 .timebar .when { font-size: 1.35rem; font-weight: 700; }
 .timebar .why { font-size: 0.8rem; opacity: 0.85; margin-top: 4px; }
 .timebar.tentative { background: #8a6d1f; }
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0 10px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0 10px; }
 .stat-box { background: white; border-radius: 12px; padding: 16px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 .stat-num { font-size: 2rem; font-weight: 700; }
 .stat-label { font-size: 0.7rem; color: #999; letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; }
@@ -104,7 +104,7 @@ header h1 { font-size: 2rem; color: #1f3a5f; }
 .log-st.in { color: #1f7a5c; } .log-st.maybe { color: #b8860b; } .log-st.out { color: #c0392b; } .log-st.waiting { color: #999; }
 footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40px; }
 @media (max-width: 500px) {
-  .stats { grid-template-columns: repeat(2, 1fr); }
+  .stats { grid-template-columns: repeat(3, 1fr); }
   .status-btn { padding: 4px 8px; font-size: 0.72rem; }
 }
 </style>
@@ -126,13 +126,12 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
 
 <div class="stats">
   <div class="stat-box stat-in"><div class="stat-num" id="count-in">0</div><div class="stat-label">Playing</div></div>
-  <div class="stat-box stat-maybe"><div class="stat-num" id="count-maybe">0</div><div class="stat-label">Maybe</div></div>
   <div class="stat-box stat-out"><div class="stat-num" id="count-out">0</div><div class="stat-label">Out</div></div>
   <div class="stat-box stat-waiting"><div class="stat-num" id="count-waiting">0</div><div class="stat-label">No reply</div></div>
 </div>
 
 <div class="policy">
-  <strong>How this works:</strong> pick your name once in the box below, then tap <strong>IN</strong>, <strong>?</strong> or <strong>OUT</strong> for this Sunday. You can change it any time. You'll get an email Monday morning, and Friday afternoon an email with who's playing.
+  <strong>How this works:</strong> pick your name once in the box below, then tap <strong>IN</strong> or <strong>OUT</strong> for this Sunday. You can change it any time. You'll get an email Monday morning, and Friday afternoon an email with who's playing.
   <div class="policy-note"><strong>The start time moves with the Lions.</strong> If they play at 1:00 we start at 4:30. If they play at 4:00&ndash;4:30 we start at 3:00. Otherwise 4:00.</div>
 </div>
 
@@ -167,7 +166,7 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
       <label class="fld">Their email
         <input type="email" id="spouse-email" placeholder="them@example.com (or leave blank)">
       </label>
-      <div class="hint">They'll get their own line on the list with their own IN / MAYBE / OUT, and their own emails.</div>
+      <div class="hint">They'll get their own line on the list with their own IN / OUT, and their own emails.</div>
     </div>
 
     <div class="action-row" style="justify-content:flex-start">
@@ -193,7 +192,6 @@ footer { text-align: center; color: #aaa; font-size: 0.75rem; padding: 20px 0 40
   <button class="filter-tab active" onclick="setFilter('all',this)">ALL</button>
   <button class="filter-tab" onclick="setFilter('waiting',this)">NO REPLY</button>
   <button class="filter-tab" onclick="setFilter('in',this)">PLAYING</button>
-  <button class="filter-tab" onclick="setFilter('maybe',this)">MAYBE</button>
   <button class="filter-tab" onclick="setFilter('out',this)">OUT</button>
 </div>
 
@@ -334,17 +332,20 @@ function updateInviteText() {
     "Paddle this Sunday (" + sundayLabel() + ") at " + startTime + "." + nl +
     (startWhy ? "(" + startWhy + ")" + nl : "") + nl +
     "Start time follows the Lions: 1:00 game means we play at 4:30, a 4:00-4:30 game means 3:00, otherwise 4:00." + nl + nl +
-    "Add your name at the link and say IN / MAYBE / OUT:" + nl + url + nl + nl +
+    "Add your name at the link and say IN or OUT:" + nl + url + nl + nl +
     "You'll get an email Wednesday to say if you're in, and one Friday listing who's playing." + nl + nl +
     "Feel free to pass this along to anyone you'd like to add.";
 }
 
+// MAYBE was retired Nov 2026: any old "maybe" shows (and counts) as no reply.
+function shown(p) { return p.status === "maybe" ? "waiting" : p.status; }
+
 function counts() {
-  var c = { in: 0, maybe: 0, out: 0, waiting: 0 };
+  var c = { in: 0, out: 0, waiting: 0 };
   Object.values(players).forEach(function (p) {
-    c[p.status] = (c[p.status] || 0) + 1;
+    c[shown(p)] = (c[shown(p)] || 0) + 1;
   });
-  ["in", "maybe", "out", "waiting"].forEach(function (s) {
+  ["in", "out", "waiting"].forEach(function (s) {
     document.getElementById("count-" + s).textContent = c[s] || 0;
   });
 }
@@ -360,7 +361,7 @@ function tierOf(p) { return p.tier === "core" ? "core" : "extended"; }
 
 function playerRow(key, p) {
   var row = document.createElement("div");
-  row.className = "player-row status-" + p.status;
+  row.className = "player-row status-" + shown(p);
 
   var cb = document.createElement("input");
   cb.type = "checkbox";
@@ -396,14 +397,14 @@ function playerRow(key, p) {
   bd.className = "status-btns";
   if (!canAnswer(key)) {
     var rd = document.createElement("span");
-    rd.className = "status-read " + p.status;
-    rd.textContent = { in: "IN", maybe: "?", out: "OUT" }[p.status] || "—";
+    rd.className = "status-read " + shown(p);
+    rd.textContent = { in: "IN", out: "OUT" }[shown(p)] || "—";
     bd.appendChild(rd);
   } else
-  ["in", "maybe", "out"].forEach(function (s) {
+  ["in", "out"].forEach(function (s) {
     var b = document.createElement("button");
     b.className = "status-btn " + s + (p.status === s ? " active" : "");
-    b.textContent = s === "in" ? "IN" : s === "maybe" ? "?" : "OUT";
+    b.textContent = s === "in" ? "IN" : "OUT";
     b.onclick = function () { setStatus(key, s); };
     bd.appendChild(b);
   });
@@ -438,7 +439,7 @@ function render() {
     var ma = MINE.indexOf(a[0]) >= 0 ? 0 : 1, mb = MINE.indexOf(b[0]) >= 0 ? 0 : 1;
     return (IS_ORGANIZER ? 0 : ma - mb) || a[1].name.localeCompare(b[1].name);
   });
-  var filtered = sorted.filter(function (e) { return F === "all" || e[1].status === F; });
+  var filtered = sorted.filter(function (e) { return F === "all" || shown(e[1]) === F; });
 
   document.getElementById("empty-state").style.display = sorted.length ? "none" : "block";
 
@@ -455,7 +456,7 @@ function render() {
 // without a confirm box for every single person.
 function visibleKeys() {
   return Object.entries(players)
-    .filter(function (e) { return F === "all" || e[1].status === F; })
+    .filter(function (e) { return F === "all" || shown(e[1]) === F; })
     .map(function (e) { return e[0]; });
 }
 function toggleSelect(key, on) {
@@ -544,7 +545,7 @@ function renderWhoAmI() {
     box.innerHTML = '<div class="t">First, find your name</div>' +
       '<div class="r"><select id="pick-name" aria-label="Your name">' + opts + '</select>' +
       '<button class="btn btn-primary" id="pick-btn">That\'s me</button></div>' +
-      '<div class="hint">You only do this once on this phone or computer. Then tap IN, ? or OUT next to your name. Answering for your partner too? You can add them next.</div>';
+      '<div class="hint">You only do this once on this phone or computer. Then tap IN or OUT next to your name. Answering for your partner too? You can add them next.</div>';
   } else {
     var mine = MINE.map(function (k) { return esc(players[k].name); }).join(" and ");
     box.innerHTML = '<div class="t">Replying as ' + mine + '</div>' +
